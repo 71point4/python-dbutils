@@ -5,7 +5,7 @@
 - Directly from github:
 
 ``` bash
-pip install git+https://github.com/username/repository.git
+pip install git+https://github.com/71point4/python-dbutils.git
 ```
 
 - Build from source:
