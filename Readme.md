@@ -1,4 +1,4 @@
-# dbutils 📦
+# dbutils
 
 # Installation
 
