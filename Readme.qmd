@@ -1,0 +1,245 @@
+---
+title: "dbutils 📦"
+format: gfm
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+# quart=render Readme.qmd --to md
+```
+
+# Installation
+
+* Directly from github:
+```{bash}
+pip install git+https://github.com/username/repository.git
+```
+
+* Build from source:
+```{bash}
+pip install .
+```
+
+## Environment
+
+These will be different depending on your database (see further down for other DB types):
+
+* Put this in the `.env` file and restart python session
+
+```{bash}
+db_clickhouse_host = "localhost"
+db_clickhouse_port = 3000
+db_clickhouse_user = "user"
+db_clickhouse_pass = "user'
+```
+
+# Example usage (Clickhouse)
+
+## General setup
+
+The following example shows how to configure environment variables and import the `Query` utility.
+
+```{python}
+import logging
+from decouple import config, AutoConfig
+from dbutils import Query
+import polars as pl
+
+# Load environment variables from a specified path
+config = AutoConfig(search_path="/path/to/env")
+```
+
+* ⚠️ NOTE: The package expects a `polars` `DataFrame` object.
+
+## Logging
+
+To enable detailed logging for `dbutils`, you can set up a console logger. This will output debug-level messages, including timestamps, log levels, and the source module.
+
+```{python }
+def setup_logger():
+    logger = logging.getLogger("dbutils")
+    logger.setLevel(logging.DEBUG)
+    # Console
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    ch.setFormatter(formatter)
+    # Console Add
+    logger.addHandler(ch)
+
+
+setup_logger()
+```
+
+
+## Inserting into Clickhouse
+
+```{sql}
+
+CREATE DATABASE nyc_taxi;
+
+CREATE TABLE nyc_taxi.trips_small (
+    trip_id             UInt32,
+    pickup_datetime     DateTime,
+    dropoff_datetime    DateTime,
+    pickup_longitude    Nullable(Float64),
+    pickup_latitude     Nullable(Float64),
+    dropoff_longitude   Nullable(Float64),
+    dropoff_latitude    Nullable(Float64),
+    passenger_count     UInt8,
+    trip_distance       Float32,
+    fare_amount         Float32,
+    extra               Float32,
+    tip_amount          Float32,
+    tolls_amount        Float32,
+    total_amount        Float32,
+    payment_type        Enum('CSH' = 1, 'CRE' = 2, 'NOC' = 3, 'DIS' = 4, 'UNK' = 5),
+    pickup_ntaname      LowCardinality(String),
+    dropoff_ntaname     LowCardinality(String)
+)
+ENGINE = MergeTree
+PRIMARY KEY (pickup_datetime, dropoff_datetime);
+```
+
+```{sql}
+INSERT INTO nyc_taxi.trips_small
+SELECT
+    trip_id,
+    pickup_datetime,
+    dropoff_datetime,
+    pickup_longitude,
+    pickup_latitude,
+    dropoff_longitude,
+    dropoff_latitude,
+    passenger_count,
+    trip_distance,
+    fare_amount,
+    extra,
+    tip_amount,
+    tolls_amount,
+    total_amount,
+    payment_type,
+    pickup_ntaname,
+    dropoff_ntaname
+FROM s3(
+    'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_{0..2}.gz',
+    'TabSeparatedWithNames'
+);
+```
+
+## Pulling Data
+
+The example below demonstrates how to run a SQL query on Clickhouse and retrieve the results as a DataFrame.
+
+```{python}
+clickhouse.sql_query(sql="SELECT count() FROM nyc_taxi.trips_small;")
+df = clickhouse.sql_query(sql="SELECT * FROM nyc_taxi.trips_small LIMIT 1e5;")
+```
+
+## Writing Data
+
+You can also write a DataFrame back to Clickhouse. This example writes the data in chunks using multiple workers for improved performance.
+
+```{python}
+start = time.time()
+clickhouse.sql_write(
+    df,
+    schema="nyc_taxi",
+    table_name="trips_small",
+    max_chunk=50000,
+    max_workers=4,
+)
+end = time.time()
+print(end - start)
+
+clickhouse.sql_query(sql="SELECT COUNT(*) FROM nyc_taxi.trips_small LIMIT 1e6;")
+```
+
+
+## Pulling Data from Other DB's
+
+### Mysql
+
+```{bash}
+db_mysql_user=user
+db_mysql_pass="user"
+db_mysql_host="127.0.0.1"
+db_mysql_port=3306
+```
+
+```{python}
+database = Query(
+    db="warehouse",
+    db_type="mysql",
+    db_host=config("db_mysql_host"),
+    db_port=config("db_mysql_port"),
+    db_user=config("db_mysql_user"),
+    db_pass=config("db_mysql_pass"),
+)
+
+database.sql_query(sql="SELECT * FROM table", limits=5)
+
+```
+
+### Greenplum
+
+```{bash}
+db_greenplum_user=user
+db_greenplum_pass="user"
+db_greenplum_host="127.0.0.1"
+db_greenplum_port=5432
+```
+
+```{python}
+database = Query(
+    db="database",
+    db_type="greenplum",
+    db_host=config("db_greenplum_host"),
+    db_port=config("db_greenplum_port"),
+    db_user=config("db_greenplum_user"),
+    db_pass=config("db_greenplum_pass"),
+)
+
+database.sql_query(sql="SELECT * FROM table", limits=5)
+
+```
+
+
+### Write to Greenplum
+
+```{python}
+database = Query(
+    db="database",
+    db_type="greenplum",
+    db_host=config("db_greenplum_host"),
+    db_port=config("db_greenplum_port"),
+    db_user=config("db_greenplum_user"),
+    db_pass=config("db_greenplum_pass"),
+)
+
+df = database.sql_query(sql="SELECT * FROM table", limits=5)
+
+```
+
+### Oracle
+
+```{bash}
+db_oracle_user=user
+db_oracle_pass=user
+db_oracle_host="127.0.0.1"
+db_oracle_service="service"
+db_oracle_port=1521
+```
+
+```{python}
+database = Query(
+ db_type = "oracle",
+ db_host = config("db_oracle_host"), 
+ db_port = config("db_oracle_port"),
+ db_user = config("db_oracle_user"),
+ db_pass = config("db_oracle_pass"),
+ db_oracle_service = config("db_oracle_service")
+ )
+  
+database.sql_query(sql = "SELECT * FROM schema.table", limits = 5)
+```
