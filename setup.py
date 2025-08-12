@@ -9,7 +9,7 @@ AUTHOR_EMAIL = "hanjo@71point4.com, justenyirimana@gmail.com"
 URL = "XXX"
 LICENSE = "PVT"
 DESCRIPTION = "DB Utils Python Package to Connect to Databases"
-LONG_DESCRIPTION = (HERE / "README.md").read_text(encoding="utf-8")
+LONG_DESCRIPTION = (HERE / "Readme.md").read_text(encoding="utf-8")
 LONG_DESC_TYPE = "text/markdown"
 
 INSTALL_REQUIRES = [
