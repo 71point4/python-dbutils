@@ -40,4 +40,5 @@ class Query:
         self.oracle_service = kwargs["db_oracle_service"]
 
     from ._sql_query import sql_query
+    from ._sql_write import _sql_write
     from ._sql_write import sql_write
