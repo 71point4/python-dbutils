@@ -1,10 +1,9 @@
 # dbutils
 
-
 # dbutils
 
 ![Python](https://img.shields.io/badge/python-3.12-blue)
-![Version](https://img.shields.io/badge/version-0.1.0-orange)
+![Version](https://img.shields.io/badge/version-2.0.0-green)
 
 `dbutils` is a lightweight Python utility for querying and writing data
 across multiple databases using a unified API.
@@ -39,13 +38,19 @@ The library works natively with **Polars DataFrames** and supports
 
 ## Installation
 
+- Directly from githu:
 
+``` bash
+pip install git+https://github.com/71point4/python-dbutils.git
+```
+
+### Installing from source
 
 This project uses **uv** for dependency management and environments.
 
 Install `uv`:
 
-```bash
+``` bash
 curl -Ls [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
 uv --version
 ```
