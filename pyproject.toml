@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dbutils"
+version = "0.1.0"
+description = "DB Utils Python Package to Connect to Databases"
+readme = "Readme.md"
+requires-python = ">=3.12"
+license = {text = "PVT"}
+
+authors = [
+    {name = "Hanjo Odendaal", email = "hanjo@phloxegenics.co.za"},
+]
+
+dependencies = [
+    "numpy==1.26.4",
+    "pandas==2.2.3",
+    "requests==2.31.0",
+    "sqlalchemy==2.0.0",
+    "pymysql==1.0.2",
+    "psycopg==3.0.8",
+    "python-decouple==3.8",
+    "psycopg2-binary==2.9.10",
+    "pyarrow==18.1.0",
+    "clickhouse-sqlalchemy==0.3.2",
+    "clickhouse-connect==0.8.15",
+    "polars-lts-cpu>=1.33.1",
+    "fastexcel>=0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "m2r2"
+]
+
+[project.urls]
+Homepage = "XXX"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[dependency-groups]
+dev = [
+    "build>=1.4.0",
+]

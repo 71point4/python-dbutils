@@ -1,172 +1,270 @@
 # dbutils
 
-# Installation
 
-- Directly from github:
+# dbutils
+
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-orange)
+
+`dbutils` is a lightweight Python utility for querying and writing data
+across multiple databases using a unified API.
+
+Supported databases include:
+
+- ClickHouse
+- PostgreSQL / Greenplum
+- MySQL
+- Oracle
+
+The library works natively with **Polars DataFrames** and supports
+**parallel writes for high-throughput ingestion**.
+
+## Table of contents
+
+- [Installation](https://www.google.com/search?q=%23installation)
+- [Environment
+  configuration](https://www.google.com/search?q=%23environment-configuration)
+- [Logging](https://www.google.com/search?q=%23logging)
+- [Basic usage
+  (ClickHouse)](https://www.google.com/search?q=%23basic-usage-clickhouse)
+- [PostgreSQL
+  example](https://www.google.com/search?q=%23postgresql-example)
+- [Other supported
+  databases](https://www.google.com/search?q=%23other-supported-databases)
+- [Summary](https://www.google.com/search?q=%23summary)
+- [Advanced analytics
+  (ClickHouse)](https://www.google.com/search?q=%23advanced-analytics-clickhouse)
+
+------------------------------------------------------------------------
+
+## Installation
+
+
+
+This project uses **uv** for dependency management and environments.
+
+Install `uv`:
+
+```bash
+curl -Ls [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
+uv --version
+```
+
+Create a virtual environment:
 
 ``` bash
-pip install git+https://github.com/71point4/python-dbutils.git
+uv venv --python 3.12
 ```
 
-- Build from source:
+Install dependencies:
 
 ``` bash
-pip install .
+uv add pandas polars sqlalchemy pyarrow decouple
 ```
 
-## Environment
-
-These will be different depending on your database (see further down for
-other DB types):
-
-- Put this in the `.env` file and restart python session
+For older CPUs that do not support AVX instructions:
 
 ``` bash
-db_clickhouse_host = "localhost"
-db_clickhouse_port = 3000
-db_clickhouse_user = "user"
-db_clickhouse_pass = "user'
+uv add pandas polars-lts-cpu sqlalchemy pyarrow decouple
 ```
 
-# Example usage (Clickhouse)
+Install the package in **editable mode**:
 
-## General setup
-
-The following example shows how to configure environment variables and
-import the `Query` utility.
-
-``` python
-import logging
-from decouple import config, AutoConfig
-from dbutils import Query
-import polars as pl
-
-# Load environment variables from a specified path
-config = AutoConfig(search_path="/path/to/env")
+``` bash
+uv pip install -e .
 ```
 
-- ⚠️ NOTE: The package expects a `polars` `DataFrame` object.
+Editable mode means:
+
+- changes to your code are immediately available
+- no reinstall is required
+
+------------------------------------------------------------------------
+
+## Environment configuration
+
+Database credentials are loaded from environment variables. Create a
+`.env` file in your project root.
+
+Example configuration:
+
+``` bash
+db_clickhouse_host="localhost"
+db_clickhouse_port=19000 # under the hood we use 18231 for writing
+db_clickhouse_user="user"
+db_clickhouse_pass="user"
+
+db_psql_host="localhost"
+db_psql_port=5432
+db_psql_user="user"
+db_psql_pass="user"
+```
+
+*Note: Restart your Python session after editing the `.env` file.*
+
+------------------------------------------------------------------------
 
 ## Logging
 
-To enable detailed logging for `dbutils`, you can set up a console
-logger. This will output debug-level messages, including timestamps, log
-levels, and the source module.
+To enable debug logging for `dbutils`, set up a basic logger:
 
 ``` python
+import logging
+
 def setup_logger():
     logger = logging.getLogger("dbutils")
     logger.setLevel(logging.DEBUG)
-    # Console
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    ch.setFormatter(formatter)
-    # Console Add
-    logger.addHandler(ch)
 
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 setup_logger()
 ```
 
-## Inserting into Clickhouse
+------------------------------------------------------------------------
 
-``` sql
+## Basic usage (ClickHouse)
 
-CREATE DATABASE nyc_taxi;
+### Setup
 
-CREATE TABLE nyc_taxi.trips_small (
-    trip_id             UInt32,
-    pickup_datetime     DateTime,
-    dropoff_datetime    DateTime,
-    pickup_longitude    Nullable(Float64),
-    pickup_latitude     Nullable(Float64),
-    dropoff_longitude   Nullable(Float64),
-    dropoff_latitude    Nullable(Float64),
-    passenger_count     UInt8,
-    trip_distance       Float32,
-    fare_amount         Float32,
-    extra               Float32,
-    tip_amount          Float32,
-    tolls_amount        Float32,
-    total_amount        Float32,
-    payment_type        Enum('CSH' = 1, 'CRE' = 2, 'NOC' = 3, 'DIS' = 4, 'UNK' = 5),
-    pickup_ntaname      LowCardinality(String),
-    dropoff_ntaname     LowCardinality(String)
+``` python
+import polars as pl
+from decouple import config, AutoConfig
+from dbutils import Query
+
+config = AutoConfig(search_path="/path/to/env")
+
+clickhouse = Query(
+    db="default",
+    db_type="clickhouse",
+    db_host=config("db_clickhouse_host"),
+    db_port=config("db_clickhouse_port"),
+    db_user=config("db_clickhouse_user"),
+    db_pass=config("db_clickhouse_pass"),
+)
+```
+
+⚠️ `dbutils` expects a **Polars DataFrame** when writing data.
+
+### Create table and load sample data
+
+You can execute raw SQL commands via `sql_query`:
+
+``` python
+clickhouse.sql_query("""
+CREATE DATABASE IF NOT EXISTS nyc_taxi;
+
+CREATE TABLE IF NOT EXISTS nyc_taxi.trips_small (
+    trip_id UInt32,
+    pickup_datetime DateTime,
+    dropoff_datetime DateTime,
+    pickup_longitude Nullable(Float64),
+    pickup_latitude Nullable(Float64),
+    dropoff_longitude Nullable(Float64),
+    dropoff_latitude Nullable(Float64),
+    passenger_count UInt8,
+    trip_distance Float32,
+    fare_amount Float32,
+    extra Float32,
+    tip_amount Float32,
+    tolls_amount Float32,
+    total_amount Float32,
+    payment_type Enum('CSH'=1,'CRE'=2,'NOC'=3,'DIS'=4,'UNK'=5),
+    pickup_ntaname LowCardinality(String),
+    dropoff_ntaname LowCardinality(String)
 )
 ENGINE = MergeTree
 PRIMARY KEY (pickup_datetime, dropoff_datetime);
-```
+""")
 
-``` sql
+clickhouse.sql_query("""
 INSERT INTO nyc_taxi.trips_small
-SELECT
-    trip_id,
-    pickup_datetime,
-    dropoff_datetime,
-    pickup_longitude,
-    pickup_latitude,
-    dropoff_longitude,
-    dropoff_latitude,
-    passenger_count,
-    trip_distance,
-    fare_amount,
-    extra,
-    tip_amount,
-    tolls_amount,
-    total_amount,
-    payment_type,
-    pickup_ntaname,
-    dropoff_ntaname
+SELECT *
 FROM s3(
-    'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_{0..2}.gz',
+    '[https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips](https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips)_{0..2}.gz',
     'TabSeparatedWithNames'
 );
+""")
 ```
 
-## Pulling Data
+### Querying and writing data
 
-The example below demonstrates how to run a SQL query on Clickhouse and
-retrieve the results as a DataFrame.
-
-``` python
-clickhouse.sql_query(sql="SELECT count() FROM nyc_taxi.trips_small;")
-df = clickhouse.sql_query(sql="SELECT * FROM nyc_taxi.trips_small LIMIT 1e5;")
-```
-
-## Writing Data
-
-You can also write a DataFrame back to Clickhouse. This example writes
-the data in chunks using multiple workers for improved performance.
+`sql_write` supports **parallel ingestion** using multiple workers.
 
 ``` python
+import time
+
+# Read data into a Polars DataFrame
+df = clickhouse.sql_query("SELECT * FROM nyc_taxi.trips_small LIMIT 100000")
+
 start = time.time()
+
+# Write data back to a new table
 clickhouse.sql_write(
     df,
-    schema="nyc_taxi",
-    table_name="trips_small",
+    schema="default",
+    table_name="test_trips",
     max_chunk=50000,
     max_workers=4,
 )
-end = time.time()
-print(end - start)
 
-clickhouse.sql_query(sql="SELECT COUNT(*) FROM nyc_taxi.trips_small LIMIT 1e6;")
+print(f"Write completed in {time.time() - start:.2f} seconds")
 ```
 
-## Pulling Data from Other DB’s
+------------------------------------------------------------------------
 
-### Mysql
+## PostgreSQL example
+
+Here is an example connecting to a PostgreSQL database, loading an Excel
+file with Polars, and parallel-writing it to the database.
+
+``` python
+psql = Query(
+    db_type="psql",
+    db="analytic",
+    db_host=config("db_psql_host"),
+    db_port=config("db_psql_port"),
+    db_user=config("db_psql_user"),
+    db_pass=config("db_psql_pass"),
+)
+
+# Read Excel file into Polars DataFrame
+excel_df = pl.read_excel("test.xlsx", sheet_id=2).rename(
+    {"[ASISA-EQUB-FFAATA] Asset Allocation": "value"}
+)
+
+# Write to PostgreSQL
+psql.sql_write(
+    excel_df,
+    schema="public",
+    table_name="excel_data",
+    max_chunk=10000,
+    max_workers=4,
+)
+```
+
+------------------------------------------------------------------------
+
+## Other supported databases
+
+### MySQL
 
 ``` bash
 db_mysql_user=user
-db_mysql_pass="user"
-db_mysql_host="127.0.0.1"
+db_mysql_pass=user
+db_mysql_host=127.0.0.1
 db_mysql_port=3306
 ```
 
 ``` python
-database = Query(
+mysql_db = Query(
     db="warehouse",
     db_type="mysql",
     db_host=config("db_mysql_host"),
@@ -174,45 +272,7 @@ database = Query(
     db_user=config("db_mysql_user"),
     db_pass=config("db_mysql_pass"),
 )
-
-database.sql_query(sql="SELECT * FROM table", limits=5)
-```
-
-### Greenplum
-
-``` bash
-db_greenplum_user=user
-db_greenplum_pass="user"
-db_greenplum_host="127.0.0.1"
-db_greenplum_port=5432
-```
-
-``` python
-database = Query(
-    db="database",
-    db_type="greenplum",
-    db_host=config("db_greenplum_host"),
-    db_port=config("db_greenplum_port"),
-    db_user=config("db_greenplum_user"),
-    db_pass=config("db_greenplum_pass"),
-)
-
-database.sql_query(sql="SELECT * FROM table", limits=5)
-```
-
-### Write to Greenplum
-
-``` python
-database = Query(
-    db="database",
-    db_type="greenplum",
-    db_host=config("db_greenplum_host"),
-    db_port=config("db_greenplum_port"),
-    db_user=config("db_greenplum_user"),
-    db_pass=config("db_greenplum_pass"),
-)
-
-df = database.sql_query(sql="SELECT * FROM table", limits=5)
+mysql_db.sql_query("SELECT * FROM table LIMIT 5")
 ```
 
 ### Oracle
@@ -220,20 +280,266 @@ df = database.sql_query(sql="SELECT * FROM table", limits=5)
 ``` bash
 db_oracle_user=user
 db_oracle_pass=user
-db_oracle_host="127.0.0.1"
-db_oracle_service="service"
+db_oracle_host=127.0.0.1
 db_oracle_port=1521
+db_oracle_service=service
 ```
 
 ``` python
-database = Query(
- db_type = "oracle",
- db_host = config("db_oracle_host"), 
- db_port = config("db_oracle_port"),
- db_user = config("db_oracle_user"),
- db_pass = config("db_oracle_pass"),
- db_oracle_service = config("db_oracle_service")
- )
-  
-database.sql_query(sql = "SELECT * FROM schema.table", limits = 5)
+oracle_db = Query(
+    db_type="oracle",
+    db_host=config("db_oracle_host"),
+    db_port=config("db_oracle_port"),
+    db_user=config("db_oracle_user"),
+    db_pass=config("db_oracle_pass"),
+    db_oracle_service=config("db_oracle_service"),
+)
+oracle_db.sql_query("SELECT * FROM schema.table LIMIT 5")
 ```
+
+------------------------------------------------------------------------
+
+## Summary
+
+`dbutils` provides:
+
+- Unified query interface across multiple relational and analytical
+  databases.
+- Native **Polars DataFrame** support for high-performance data
+  manipulation.
+- Parallel writes for high-volume ingestion and fast ETL.
+- Optimised ClickHouse ingestion for advanced analytics.
+- Simple environment configuration via `.env` files.
+
+------------------------------------------------------------------------
+
+## Advanced analytics (ClickHouse)
+
+`dbutils` makes it easy to leverage ClickHouse’s powerful analytical and
+mathematical functions for complex data science workloads. The examples
+below demonstrate basic statistical exploration, time series
+manipulation, geospatial clustering, and vector similarity searches.
+
+### 1. Basic statistics & distributions
+
+Explore the dataset by getting row counts, finding extremes, calculating
+averages, and building distributions.
+
+``` python
+# Total trips
+clickhouse.sql_query("SELECT COUNT(*) FROM nyc_taxi.trips_small")
+
+# Top 10 longest trips by distance
+clickhouse.sql_query("""
+    SELECT
+        trip_id,
+        trip_distance,
+        pickup_datetime,
+        dropoff_datetime
+    FROM nyc_taxi.trips_small
+    ORDER BY trip_distance DESC
+    LIMIT 10;
+""")
+
+# Average and median trip distances
+clickhouse.sql_query("""
+    SELECT avg(trip_distance) AS avg_distance
+    FROM nyc_taxi.trips_small;
+""")
+
+clickhouse.sql_query("""
+    SELECT
+        quantile(0.5)(trip_distance) AS median_trip_distance
+    FROM nyc_taxi.trips_small;
+""")
+
+# Distance distribution (Histogram buckets)
+clickhouse.sql_query("""
+    SELECT
+        round(trip_distance, 1) AS distance_bucket,
+        count() AS trips
+    FROM nyc_taxi.trips_small
+    GROUP BY distance_bucket
+    ORDER BY distance_bucket;
+""")
+```
+
+### 2. Time and speed analysis
+
+Calculate exact trip durations and derive speed on the fly.
+
+``` python
+# Average duration in minutes
+clickhouse.sql_query("""
+    SELECT
+        avg(dateDiff('minute', pickup_datetime, dropoff_datetime)) AS avg_minutes
+    FROM nyc_taxi.trips_small;
+""")
+
+# Derive speed (MPH) and find the top 10 fastest trips
+clickhouse.sql_query("""
+    SELECT
+        trip_id,
+        trip_distance,
+        dateDiff('second', pickup_datetime, dropoff_datetime) AS duration_seconds,
+        trip_distance / (duration_seconds / 3600) AS speed_mph
+    FROM nyc_taxi.trips_small
+    WHERE duration_seconds > 0
+    ORDER BY speed_mph DESC
+    LIMIT 10;
+""")
+```
+
+### 3. Geospatial analysis & clustering
+
+Calculate real-world distances between coordinates and create
+geographical clusters.
+
+``` python
+# Exact point-to-point distance in meters
+clickhouse.sql_query("""
+    SELECT
+        trip_id,
+        geoDistance(pickup_longitude, pickup_latitude, dropoff_longitude, dropoff_latitude) AS meters
+    FROM nyc_taxi.trips_small
+    ORDER BY meters DESC
+    LIMIT 10;
+""")
+
+# Geohash clustering to find popular pickup zones
+clickhouse.sql_query("""
+    SELECT
+        geohashEncode(pickup_longitude, pickup_latitude, 6) AS cell,
+        count() AS trips
+    FROM nyc_taxi.trips_small
+    GROUP BY cell
+    ORDER BY trips DESC
+    LIMIT 20;
+""")
+
+# Get cluster centers (average coordinates per zone)
+clickhouse.sql_query("""
+    SELECT
+        geohashEncode(pickup_longitude, pickup_latitude, 6) AS cell,
+        avg(pickup_latitude) AS lat,
+        avg(pickup_longitude) AS lon,
+        count() AS trips
+    FROM nyc_taxi.trips_small
+    GROUP BY cell
+    ORDER BY trips DESC
+    LIMIT 20;
+""")
+
+# Distance to a specific landmark (Times Square)
+clickhouse.sql_query("""
+    SELECT
+        trip_id,
+        geoDistance(pickup_longitude, pickup_latitude, -73.9855, 40.7580) AS meters_from_times_square
+    FROM nyc_taxi.trips_small
+    ORDER BY meters_from_times_square
+    LIMIT 20;
+""")
+```
+
+### 4. Vector similarity & nearest neighbors
+
+Use cosine distance to find rows that match a specific “profile” or
+vector, treating multiple columns as an n-dimensional array.
+
+``` python
+# Combine geospatial and vector distance: 
+# Find trips starting near Times Square that look like a 2.5-mile, $15 ride
+clickhouse.sql_query("""
+    SELECT
+        trip_id,
+        geoDistance(pickup_longitude, pickup_latitude, -73.9855, 40.7580) AS meters_from_times_square,
+        cosineDistance([trip_distance, total_amount], [2.5, 15]) AS similarity
+    FROM nyc_taxi.trips_small
+    ORDER BY similarity
+    LIMIT 20;
+""")
+
+# Nearest neighbors for a highly specific trip profile:
+# 5 miles, 15 minutes, 2 passengers, $20 fare
+clickhouse.sql_query("""
+    SELECT
+        trip_id,
+        cosineDistance(
+            [
+                trip_distance,
+                dateDiff('minute', pickup_datetime, dropoff_datetime),
+                passenger_count,
+                total_amount
+            ],
+            [5, 15, 2, 20]
+        ) AS similarity
+    FROM nyc_taxi.trips_small
+    ORDER BY similarity ASC
+    LIMIT 10;
+""")
+
+# Find the most "typical" taxi ride in NYC using vector distance
+# Step 1: Compute the average ride characteristics
+clickhouse.sql_query("""
+    SELECT
+        avg(trip_distance) AS avg_distance,
+        avg(total_amount) AS avg_fare,
+        avg(passenger_count) AS avg_passengers,
+        avg(dateDiff('minute', pickup_datetime, dropoff_datetime)) AS avg_duration
+    FROM nyc_taxi.trips_small;
+""")
+
+# Step 2: Find the ride with the smallest cosine distance to the overall average
+clickhouse.sql_query("""
+    SELECT
+        trip_id,
+        trip_distance,
+        total_amount,
+        passenger_count,
+        dateDiff('minute', pickup_datetime, dropoff_datetime) AS duration_minutes
+    FROM nyc_taxi.trips_small
+    ORDER BY cosineDistance(
+        [
+            toFloat64(trip_distance),
+            toFloat64(total_amount),
+            toFloat64(passenger_count),
+            toFloat64(dateDiff('minute', pickup_datetime, dropoff_datetime))
+        ],
+        [
+            toFloat64(avg(trip_distance) OVER ()),
+            toFloat64(avg(total_amount) OVER ()),
+            toFloat64(avg(passenger_count) OVER ()),
+            toFloat64(avg(dateDiff('minute', pickup_datetime, dropoff_datetime)) OVER ())
+        ]
+    )
+    LIMIT 10;
+""")
+```
+
+### Understanding the analytical functions
+
+The queries above utilize ClickHouse features tailored for high-speed
+analysis without requiring data to be pulled into pandas/Python first:
+
+- **`quantile(level)(expr)`**: Calculates exact or approximate
+  quantiles. In the basic stats section, `quantile(0.5)` is used to
+  calculate the median trip distance efficiently.
+- **`dateDiff('unit', start, end)`**: Calculates the difference between
+  two timestamps in a specified unit (minutes, seconds, etc.). This
+  allows you to instantly derive duration for speed calculations or
+  vector profiles.
+- **`geoDistance(lon1, lat1, lon2, lat2)`**: Natively calculates the
+  great-circle distance (in meters) between two WGS-84 coordinate pairs.
+  This replaces complex trigonometric math in your queries.
+- **`geohashEncode(lon, lat, precision)`**: Converts GPS coordinates
+  into a short string that represents a geographic bounding box. At
+  precision `6`, it creates a grid of roughly 1.2km x 0.6km.
+  `GROUP BY cell` is a lightning-fast way to perform spatial clustering
+  to find high-traffic zones or determine cluster centers.
+- **`cosineDistance(vector1, vector2)`**: Measures the angle between two
+  mathematical vectors (arrays). A lower distance means the vectors
+  point in a more similar direction. By packing ride characteristics
+  into arrays (e.g., `[distance, duration, passengers, fare]`), you can
+  instantly perform similarity scoring, nearest neighbor searches, or
+  find rows that most closely match an aggregated “average” profile
+  using window functions.
